@@ -1,2 +1,7 @@
 example:
   - hello:
+notes:
+  - createNote:
+  - deleteNote:
+  - editNote:
+  - getAllNotes:

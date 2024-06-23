@@ -1,5 +1,7 @@
 import 'package:mypod_client/mypod_client.dart';
 import 'package:flutter/material.dart';
+import 'package:mypod_flutter/loading_screen.dart';
+import './note_dialog.dart';
 import 'package:serverpod_flutter/serverpod_flutter.dart';
 
 // Sets up a singleton client object that can be used to talk to the server from
@@ -7,7 +9,7 @@ import 'package:serverpod_flutter/serverpod_flutter.dart';
 // The client is set up to connect to a Serverpod running on a local server on
 // the default port. You will need to modify this to connect to staging or
 // production servers.
-var client = Client('http://$localhost:8080/')
+var client = Client('http://localhost:8080/')
   ..connectivityMonitor = FlutterConnectivityMonitor();
 
 void main() {
@@ -39,28 +41,58 @@ class MyHomePage extends StatefulWidget {
 }
 
 class MyHomePageState extends State<MyHomePage> {
-  // These fields hold the last result or error message that we've received from
-  // the server or null if no result exists yet.
-  String? _resultMessage;
-  String? _errorMessage;
+  List<Note>? _notes;
+  Exception? _connectionException;
 
-  final _textEditingController = TextEditingController();
+  void _connectionFailed(dynamic exception) {
+    setState(() {
+      _notes = null;
+      _connectionException = exception;
+    });
+  }
 
-  // Calls the `hello` method of the `example` endpoint. Will set either the
-  // `_resultMessage` or `_errorMessage` field, depending on if the call
-  // is successful.
-  void _callHello() async {
+  Future<void> _loadNotes() async {
     try {
-      final result = await client.example.hello(_textEditingController.text);
+      final notes = await client.notes.getAllNotes();
       setState(() {
-        _errorMessage = null;
-        _resultMessage = result;
+        _notes = notes;
       });
     } catch (e) {
-      setState(() {
-        _errorMessage = '$e';
-      });
+      _connectionFailed(e);
     }
+  }
+
+  Future<void> _createNote(Note note) async {
+    try {
+      await client.notes.createNote(note);
+      await _loadNotes();
+    } catch (e) {
+      _connectionFailed(e);
+    }
+  }
+
+  Future<void> _updateNote(Note note) async {
+    try {
+      await client.notes.editNote(note);
+      await _loadNotes();
+    } catch (e) {
+      _connectionFailed(e);
+    }
+  }
+
+  Future<void> _deleteNote(Note note) async {
+    try {
+      await client.notes.deleteNote(note);
+      await _loadNotes();
+    } catch (e) {
+      _connectionFailed(e);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotes();
   }
 
   @override
@@ -69,69 +101,70 @@ class MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         title: Text(widget.title),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16.0),
-              child: TextField(
-                controller: _textEditingController,
-                decoration: const InputDecoration(
-                  hintText: 'Enter your name',
-                ),
-              ),
+      body: _notes == null
+          ? LoadingScreen(
+              onTryAgain: _loadNotes,
+              exception: _connectionException,
+            )
+          : ListView.builder(
+              itemCount: _notes!.length,
+              itemBuilder: ((context, index) {
+                return ListTile(
+                  title: Text(_notes![index].text),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          showNoteDialog(
+                            context: context,
+                            text: _notes![index].text,
+                            onSaved: (text) {
+                              setState(() {
+                                _notes![index].text = text;
+                              });
+
+                              _updateNote(_notes![index]);
+                            },
+                          );
+                        },
+                        icon: const Icon(Icons.edit),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          var note = _notes![index];
+
+                          setState(() {
+                            _notes!.remove(note);
+                          });
+
+                          _deleteNote(note);
+                        },
+                        icon: const Icon(Icons.delete),
+                      ),
+                    ],
+                  ),
+                );
+              }),
             ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16.0),
-              child: ElevatedButton(
-                onPressed: _callHello,
-                child: const Text('Send to Server'),
-              ),
+      floatingActionButton: _notes == null
+          ? null
+          : FloatingActionButton(
+              onPressed: () {
+                showNoteDialog(
+                  context: context,
+                  onSaved: (text) {
+                    var note = Note(
+                      text: text,
+                    );
+                    _notes!.add(note);
+
+                    _createNote(note);
+                  },
+                );
+              },
+              child: const Icon(Icons.add),
             ),
-            _ResultDisplay(
-              resultMessage: _resultMessage,
-              errorMessage: _errorMessage,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// _ResultDisplays shows the result of the call. Either the returned result from
-// the `example.hello` endpoint method or an error message.
-class _ResultDisplay extends StatelessWidget {
-  final String? resultMessage;
-  final String? errorMessage;
-
-  const _ResultDisplay({
-    this.resultMessage,
-    this.errorMessage,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    String text;
-    Color backgroundColor;
-    if (errorMessage != null) {
-      backgroundColor = Colors.red[300]!;
-      text = errorMessage!;
-    } else if (resultMessage != null) {
-      backgroundColor = Colors.green[300]!;
-      text = resultMessage!;
-    } else {
-      backgroundColor = Colors.grey[300]!;
-      text = 'No server response yet.';
-    }
-
-    return Container(
-      height: 50,
-      color: backgroundColor,
-      child: Center(
-        child: Text(text),
-      ),
     );
   }
 }
