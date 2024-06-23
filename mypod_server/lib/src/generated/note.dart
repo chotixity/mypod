@@ -9,23 +9,33 @@
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'package:serverpod/serverpod.dart' as _i1;
+import 'package:serverpod_auth_server/serverpod_auth_server.dart' as _i2;
 
 /// Holds a note with a text written by the user.
 abstract class Note extends _i1.TableRow implements _i1.ProtocolSerialization {
   Note._({
     int? id,
     required this.text,
+    required this.createdById,
+    this.createdBy,
   }) : super(id);
 
   factory Note({
     int? id,
     required String text,
+    required int createdById,
+    _i2.UserInfo? createdBy,
   }) = _NoteImpl;
 
   factory Note.fromJson(Map<String, dynamic> jsonSerialization) {
     return Note(
       id: jsonSerialization['id'] as int?,
       text: jsonSerialization['text'] as String,
+      createdById: jsonSerialization['createdById'] as int,
+      createdBy: jsonSerialization['createdBy'] == null
+          ? null
+          : _i2.UserInfo.fromJson(
+              (jsonSerialization['createdBy'] as Map<String, dynamic>)),
     );
   }
 
@@ -36,18 +46,26 @@ abstract class Note extends _i1.TableRow implements _i1.ProtocolSerialization {
   /// The contents of the note.
   String text;
 
+  int createdById;
+
+  _i2.UserInfo? createdBy;
+
   @override
   _i1.Table get table => t;
 
   Note copyWith({
     int? id,
     String? text,
+    int? createdById,
+    _i2.UserInfo? createdBy,
   });
   @override
   Map<String, dynamic> toJson() {
     return {
       if (id != null) 'id': id,
       'text': text,
+      'createdById': createdById,
+      if (createdBy != null) 'createdBy': createdBy?.toJson(),
     };
   }
 
@@ -56,11 +74,13 @@ abstract class Note extends _i1.TableRow implements _i1.ProtocolSerialization {
     return {
       if (id != null) 'id': id,
       'text': text,
+      'createdById': createdById,
+      if (createdBy != null) 'createdBy': createdBy?.toJsonForProtocol(),
     };
   }
 
-  static NoteInclude include() {
-    return NoteInclude._();
+  static NoteInclude include({_i2.UserInfoInclude? createdBy}) {
+    return NoteInclude._(createdBy: createdBy);
   }
 
   static NoteIncludeList includeList({
@@ -95,19 +115,28 @@ class _NoteImpl extends Note {
   _NoteImpl({
     int? id,
     required String text,
+    required int createdById,
+    _i2.UserInfo? createdBy,
   }) : super._(
           id: id,
           text: text,
+          createdById: createdById,
+          createdBy: createdBy,
         );
 
   @override
   Note copyWith({
     Object? id = _Undefined,
     String? text,
+    int? createdById,
+    Object? createdBy = _Undefined,
   }) {
     return Note(
       id: id is int? ? id : this.id,
       text: text ?? this.text,
+      createdById: createdById ?? this.createdById,
+      createdBy:
+          createdBy is _i2.UserInfo? ? createdBy : this.createdBy?.copyWith(),
     );
   }
 }
@@ -118,23 +147,57 @@ class NoteTable extends _i1.Table {
       'text',
       this,
     );
+    createdById = _i1.ColumnInt(
+      'createdById',
+      this,
+    );
   }
 
   /// The contents of the note.
   late final _i1.ColumnString text;
 
+  late final _i1.ColumnInt createdById;
+
+  _i2.UserInfoTable? _createdBy;
+
+  _i2.UserInfoTable get createdBy {
+    if (_createdBy != null) return _createdBy!;
+    _createdBy = _i1.createRelationTable(
+      relationFieldName: 'createdBy',
+      field: Note.t.createdById,
+      foreignField: _i2.UserInfo.t.id,
+      tableRelation: tableRelation,
+      createTable: (foreignTableRelation) =>
+          _i2.UserInfoTable(tableRelation: foreignTableRelation),
+    );
+    return _createdBy!;
+  }
+
   @override
   List<_i1.Column> get columns => [
         id,
         text,
+        createdById,
       ];
+
+  @override
+  _i1.Table? getRelationTable(String relationField) {
+    if (relationField == 'createdBy') {
+      return createdBy;
+    }
+    return null;
+  }
 }
 
 class NoteInclude extends _i1.IncludeObject {
-  NoteInclude._();
+  NoteInclude._({_i2.UserInfoInclude? createdBy}) {
+    _createdBy = createdBy;
+  }
+
+  _i2.UserInfoInclude? _createdBy;
 
   @override
-  Map<String, _i1.Include?> get includes => {};
+  Map<String, _i1.Include?> get includes => {'createdBy': _createdBy};
 
   @override
   _i1.Table get table => Note.t;
@@ -163,6 +226,8 @@ class NoteIncludeList extends _i1.IncludeList {
 class NoteRepository {
   const NoteRepository._();
 
+  final attachRow = const NoteAttachRowRepository._();
+
   Future<List<Note>> find(
     _i1.Session session, {
     _i1.WhereExpressionBuilder<NoteTable>? where,
@@ -172,6 +237,7 @@ class NoteRepository {
     bool orderDescending = false,
     _i1.OrderByListBuilder<NoteTable>? orderByList,
     _i1.Transaction? transaction,
+    NoteInclude? include,
   }) async {
     return session.db.find<Note>(
       where: where?.call(Note.t),
@@ -181,6 +247,7 @@ class NoteRepository {
       limit: limit,
       offset: offset,
       transaction: transaction,
+      include: include,
     );
   }
 
@@ -192,6 +259,7 @@ class NoteRepository {
     bool orderDescending = false,
     _i1.OrderByListBuilder<NoteTable>? orderByList,
     _i1.Transaction? transaction,
+    NoteInclude? include,
   }) async {
     return session.db.findFirstRow<Note>(
       where: where?.call(Note.t),
@@ -200,6 +268,7 @@ class NoteRepository {
       orderDescending: orderDescending,
       offset: offset,
       transaction: transaction,
+      include: include,
     );
   }
 
@@ -207,10 +276,12 @@ class NoteRepository {
     _i1.Session session,
     int id, {
     _i1.Transaction? transaction,
+    NoteInclude? include,
   }) async {
     return session.db.findById<Note>(
       id,
       transaction: transaction,
+      include: include,
     );
   }
 
@@ -305,6 +376,29 @@ class NoteRepository {
       where: where?.call(Note.t),
       limit: limit,
       transaction: transaction,
+    );
+  }
+}
+
+class NoteAttachRowRepository {
+  const NoteAttachRowRepository._();
+
+  Future<void> createdBy(
+    _i1.Session session,
+    Note note,
+    _i2.UserInfo createdBy,
+  ) async {
+    if (note.id == null) {
+      throw ArgumentError.notNull('note.id');
+    }
+    if (createdBy.id == null) {
+      throw ArgumentError.notNull('createdBy.id');
+    }
+
+    var $note = note.copyWith(createdById: createdBy.id);
+    await session.db.updateRow<Note>(
+      $note,
+      columns: [Note.t.createdById],
     );
   }
 }

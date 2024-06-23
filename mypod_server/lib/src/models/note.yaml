@@ -4,3 +4,4 @@ table: note
 fields:
   ### The contents of the note.
   text: String
+  createdBy: module:auth:UserInfo?, relation

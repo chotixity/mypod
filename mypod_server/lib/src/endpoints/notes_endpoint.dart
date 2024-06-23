@@ -1,5 +1,5 @@
 import 'package:serverpod/server.dart';
-
+import 'package:serverpod_auth_server/module.dart';
 import '../generated/protocol.dart';
 
 class NotesEndpoint extends Endpoint {
@@ -20,6 +20,7 @@ class NotesEndpoint extends Endpoint {
     return await Note.db.find(
       session,
       orderBy: (t) => t.id,
+      include: Note.include(createdBy: UserInfo.include()),
     );
   }
 }
