@@ -16,10 +16,14 @@ class NotesEndpoint extends Endpoint {
     await Note.db.updateRow(session, note);
   }
 
+  //TODO: Fix this method to fetch only current use
   Future<List<Note>> getAllNotes(Session session) async {
+    final authenticationInfo = await session.authenticated;
+    final userId = authenticationInfo?.userId;
     return await Note.db.find(
       session,
       orderBy: (t) => t.id,
+      where: (t) => t.createdById.equals(userId),
       include: Note.include(createdBy: UserInfo.include()),
     );
   }
